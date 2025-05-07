@@ -39,7 +39,9 @@ FASTA files for blast database and parsing
 
 	Single amino acid polymorphisms - http://119.3.41.228/dbSAP/download.html
 
-	Six-frame translated protein - translated GRCh38p14_genomic using seqkit 2.8.2 (seqkit translate db/GRCh38.p14_genomic.fna --append-frame -x -f 6 -M -m 8 --transl-table 1 -s > db/human_6FT_m.fasta)
+	Six-frame translated protein - translated GRCh38p14_genomic using seqkit 2.8.2 
+	
+	seqkit translate db/GRCh38.p14_genomic.fna --append-frame -x -f 6 -M -m 8 --transl-table 	1 -s > db/human_6FT_m.fasta
 
 
 Making blast databases
