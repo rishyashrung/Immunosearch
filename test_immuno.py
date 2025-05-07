@@ -229,6 +229,10 @@ def PCPS(input_file):
     return print("\t" + "separate files cis_PCPS and trans_PCPS created for spliced peptides")
 
 
+#
+##
+###
+#### main funciton starts here
 
 if __name__ == "__main__":
     try:
@@ -264,7 +268,6 @@ if __name__ == "__main__":
 
     os.chdir(work_dir)
     print("loading into work directory at", work_dir)
-    
     # peptide length 8-11, removing gibbs junk and DB matched
     all_data = pd.ExcelFile(input_file_path)
     data = pd.read_excel(all_data, file_name)
@@ -272,10 +275,9 @@ if __name__ == "__main__":
     #data = pd.read_csv(path_peptides) #PSM table from PEAKS
     #gibbs = pd.read_csv(path_gibbs) #Gibbs clustering CSV
     print("filtering peptides found by DB search")
-    
     data = data[data["Found By"] != 'DB Search']
     if (len(gibbs_cluster) != 0):
-        print("Selected gibbs clusters based on input, gibbs clusters", gibbs_cluster)
+        print("Selected gibbs clusters based on input")
         gibbs = gibbs[gibbs["Gn"].isin(gibbs_cluster)]
     else:
         print("selecting all gibbs clusters")
@@ -309,8 +311,7 @@ if __name__ == "__main__":
         else:
             print( str(len(pep)) + " peptides being searched for known HLAs")
         
-        #conda run -n Bio-stats blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out  -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"
-        subprocess.run("blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
+        !blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out -evalue 10.0 -outfmt "6 qseqid saccver pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"
 
         #parsing and catergorizing HLA_blast output
         print("\t"+ "reading output")
@@ -350,14 +351,12 @@ if __name__ == "__main__":
             print(str(len(pep)) + " peptides being searched for human canonical proteins")
         
         #blast all proteins against human canonical proteins
-        subprocess.run("blastp -task blastp-short -query to_blastp.fasta -db db/human_canonical -out blastp_out_human_canonical -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
-        
+        !blastp -task blastp-short -query to_blastp.fasta -db db/human_canonical -out blastp_out_human_canonical -evalue 10.0 -outfmt "6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"
         print("\t"+ "reading output")
         parse_categorize('db/human_canonical.fasta', 'blastp_out_human_canonical', 'to_blastp_2.fasta')
         output  = pd.read_table('categorized_blastp_out_human_canonical')
         
         #preparing fasta files of proteins to search 6FT database
-        
         to_6ft = output[(output["blastp_category"] != 'map to known protein with 1 aa mismatch') & (output["blastp_category"] != 'match to known protein')]
         list = to_6ft["Query"] 
         pep = list.to_list()
@@ -385,9 +384,8 @@ if __name__ == "__main__":
             print(str(len(pep)) + " peptides being searched for Single Amino Acid Variants")
             
         #blastp against db_SAP (single amino acids polymorphisms)
-        #conda run -n Bio-stats blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid saccver pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"
-        subprocess.run("blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
-
+        !blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt "6 qseqid saccver pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"
+        
         print("\t"+ "reading output")
         parse_categorize('db/sap_db.fa', 'blast_out_SAAV', 'SAAV_2.fasta')
 
@@ -416,10 +414,8 @@ if __name__ == "__main__":
             
             print(str(len(pep)) + " peptide being searched in the six frame translated human genome")
             
+            !seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out
             
-            subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
-
-
             input1= SeqIO.parse('6ft_out',"fasta") # 6FT results to dict
             seqdb={}
             for record in input1:
@@ -438,9 +434,7 @@ if __name__ == "__main__":
         else:
             print(str(len(pep)) + " peptides being searched in the six frame translated human genome")
 
-            
-            subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
-
+            !seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out
 
             print("\t"+ "writing 6FT results to dictionary")
 
@@ -489,9 +483,51 @@ if __name__ == "__main__":
     
     #saving output files
     SAAV_out = pd.read_table('categorized_blast_out_SAAV', sep = "\t")
-    Sixframe_out = pd.read_csv('matches_to_6ft.csv')
     Sixframe_notmatched = pd.read_table('no_match_6ft_2.fasta', sep = "\t", names = ["Peptides"])
     cis_PCPS = pd.read_table("cis_PCPS", names= ["Peptide", "Spliced_peptide", "Protein_origin"])
+
+    #getting peptide loci
+
+    # Load your data
+    Sixframe_out = pd.read_csv('matches_to_6ft.csv')
+
+    # Updated function: now includes frame info in the output
+    def compute_locus_for_pair(entry_str, aa_pair):
+        m_chr   = re.search(r'chromosome (\w+)', entry_str)
+        m_beg   = re.search(r'begin=(\d+)', entry_str)
+        m_end   = re.search(r'end=(\d+)',   entry_str)
+        m_frame = re.search(r'frame=([+-]?\d+)', entry_str)
+
+        chrom   = m_chr.group(1) if m_chr else None
+        prot_b  = int(m_beg.group(1)) if m_beg else None
+        prot_e  = int(m_end.group(1)) if m_end else None
+        frame   = int(m_frame.group(1)) if m_frame else None
+
+        s, e = aa_pair
+        if frame > 0:
+            g_start = prot_b + 3*(s - 1)
+            g_end   = prot_b + 3*e   - 1
+        else:
+            g_start = prot_e - (3*e   - 1)
+            g_end   = prot_e -  3*(s - 1)
+
+        return f"chr{chrom}:{g_start}_{g_end}_frame={frame}"
+
+    # Extract and join all loci with frame info
+    def all_loci_from_cell(cell):
+        pairs = ast.literal_eval(cell)
+        loci = [
+            compute_locus_for_pair(entry_str, aa_pair)
+            for entry_str, aa_pair in pairs
+        ]
+        return ";".join(loci)
+
+    # Apply to your data (replace 'ColumnName' with the correct column name)
+    Sixframe_out['loci'] = Sixframe_out['Sequence_loc'].apply(all_loci_from_cell)
+
+
+
+
     #writing data to excel file
     if (len(mismatched) == 0 & len(matched) == 0 & len(unmatched) == 0):
         print("No significant peptides found")
@@ -521,4 +557,5 @@ if __name__ == "__main__":
 
         os.chdir(work_dir)
         print("returning back to work directory at", work_dir)
-        print("search and classification done, file saved at ", output_file_path + file_name + '_immuno_search_out.xlsx')
+        return print("search and classification done, file saved at ", output_file_path + file_name + '_immuno_search_out.xlsx')
+        
