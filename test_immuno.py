@@ -11,6 +11,7 @@ import ast
 import papermill
 import logging
 
+logger = logging.getLogger(__name__)
 
 #functions 
 
@@ -29,8 +30,8 @@ def create_files(pep, file_name):
     for i in range(len(pep)):
         ofile.write(pep[i] + '\n')
     ofile.close()
-    
-    return print("\t" + "files", file_name, ",", file_name + '_2', "created" )
+    logger.info(f"\tfiles {file_name}, {file_name}_2 created")
+    return True
 
 #fn for parsing and categorizing blast output
 def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with file extension
@@ -131,12 +132,14 @@ def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with f
     blast_file = pd.read_table(blast_out, sep ='\t', names = header_names)
     blast_file
     #to check if any keys are missing in the dictionary seqdb[]
+    # Change return statements to use logging
     missing = blast_file[~blast_file["sseqid"].isin(seqdb.keys())]
     if (len(missing) == 0):
-        return print("\t"+ 'all is gud for',blast_out)
+        logger.info(f"\tall is good for {blast_out}")
+        return True
     else:
-        return print('dictionary error') #make sure the dictionary key is the same as the accession in
-    
+        logger.error('dictionary error')
+        return False
 
 def get_pos(substring, string):
 # Find the starting position
@@ -162,7 +165,8 @@ def find_matches(peptide, db, query):
                 elif (query == 'PCPS'):
                     search_6ft[string].append(key)
                 else:
-                    return print("specify find matches query: 6FT or PCPS")
+                    logger.error("\tspecify find matches query: 6FT or PCPS")
+                    return None
     unmatched = []
     #fn for filtering the 6FT matched dictionary
     def my_filtering_function(pair):
@@ -178,10 +182,11 @@ def find_matches(peptide, db, query):
     for key, value in search_6ft.items():
         if (value == []):
             unmatched.append(key)
-    if (len(matched) + len(unmatched) == len(search_6ft)):  #to make sure the dictionary filter works fine
+    if (len(matched) + len(unmatched) == len(search_6ft)):
         return (matched, unmatched)
     else:
-        return print("\t" + "error in separating matches")
+        logger.error("\terror in separating matches")
+        return None
     
 def split_string(s):
     splits_dict = {}
@@ -230,7 +235,8 @@ def PCPS(input_file):
     input.close()
     output.close()
     output_2.close()
-    return print("\t" + "separate files cis_PCPS and trans_PCPS created for spliced peptides")
+    logger.info("\tseparate files cis_PCPS and trans_PCPS created for spliced peptides")
+    return True
 
 
 #
@@ -244,7 +250,7 @@ if __name__ == "__main__":
                                    ["work_dir=", "input_file_path=", "MHC_class=", 
                                     "gibbs_cluster=", "output_file_path=", "file_name="])
     except getopt.GetoptError as err:
-        print(err)
+        logger.error(err)
         sys.exit(2)
 
     work_dir = input_file_path = MHC_class = gibbs_cluster = output_file_path = file_name = None
@@ -265,12 +271,11 @@ if __name__ == "__main__":
 
     # Check if any required arguments are missing
     if None in (work_dir, input_file_path, MHC_class, gibbs_cluster, output_file_path, file_name):
-        print("Missing required arguments")
+        logger.error("Missing required arguments")
         sys.exit(2)
 
     # Run the main function with the provided arguments
     
-    #GPT magik
     # configure root logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -282,48 +287,46 @@ if __name__ == "__main__":
     logger.addHandler(ch)
 
     # file handler
-    log_path = os.path.join(work_dir, "pipeline.log")  # after you set work_dir
+    log_path = os.path.join(output_file_path, "pipeline.log")  # after you set work_dir
     fh = logging.FileHandler(log_path, mode="w")
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(fh)
 
     os.chdir(work_dir)
-    print("loading into work directory at", work_dir)
+    logger.info(f"loading into work directory at {work_dir}")
     
     # peptide length 8-11, removing gibbs junk and DB matched
     all_data = pd.ExcelFile(input_file_path)
     data = pd.read_excel(all_data, file_name)
     gibbs = pd.read_excel(all_data, 'gibbs_clustering')
-    #data = pd.read_csv(path_peptides) #PSM table from PEAKS
-    #gibbs = pd.read_csv(path_gibbs) #Gibbs clustering CSV
-    print("filtering peptides found by DB search")
+    logger.info("filtering peptides found by DB search")
     
     data = data[data["Found By"] != 'DB Search']
     if (len(gibbs_cluster) != 0):
-        print("Selected gibbs clusters based on input, gibbs clusters", gibbs_cluster)
+        logger.info(f"Selected gibbs clusters based on input, gibbs clusters {gibbs_cluster}")
         gibbs = gibbs[gibbs["Gn"].isin(gibbs_cluster)]
     else:
-        print("selecting all gibbs clusters")
+        logger.info("selecting all gibbs clusters")
         gibbs = gibbs
     
     if (MHC_class == '1'):
-        print("selecting peptides with length between 8 and 11 AA")
+        logger.info("selecting peptides with length between 8 and 11 AA")
         gibbs = gibbs[gibbs["Sequence"].str.len().between(8,11)]
     elif (MHC_class == '2'):
-        print("selecting peptides with length between 12 and 17 AA")
+        logger.info("selecting peptides with length between 12 and 17 AA")
         gibbs = gibbs[gibbs["Sequence"].str.len().between(12,17)]
     elif (MHC_class == "E"):
-        print("selecting peptides with length between 8 and 15 AA")
+        logger.info("selecting peptides with length between 8 and 15 AA")
         gibbs = gibbs[gibbs["Sequence"].str.len().between(8,15)]
     else:
-        print("!!! not filtered by length")
+        logger.warning("!!! not filtered by length")
 
     data = data[data["Peptide"].isin(gibbs["Sequence"])]
     list = pd.unique(data["Peptide"])
     pep = list.tolist()
     blast_p = pep
-    print("generating lists and files for further analysis")
+    logger.info("generating lists and files for further analysis")
     create_files(pep,'peptides')
 
 
@@ -331,39 +334,38 @@ if __name__ == "__main__":
     if(len(pep) != 0):
 
         if(len(pep) == 1): #coz I'm a grammar Nazi :)
-            print(str(len(pep)) + " peptide being searched for known HLAs")
+            logger.info(f"{len(pep)} peptide being searched for known HLAs")
         else:
-            print( str(len(pep)) + " peptides being searched for known HLAs")
+            logger.info(f"{len(pep)} peptides being searched for known HLAs")
         
-        #conda run -n Bio-stats blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out  -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"
         subprocess.run("blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
 
         #parsing and catergorizing HLA_blast output
-        print("\t"+ "reading output")
+        logger.info("\treading output")
         parse_categorize('db/APD_Hs_all.fasta', 'HLA_blast_out', 'peptides_2.fasta')
 
         #known HLA
-        print("\t"+ "generating lists and files for further analysis")
+        logger.info("\tgenerating lists and files for further analysis")
         output_HLA = pd.read_table('categorized_HLA_blast_out')
         known = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
         list = known["Query"] 
         pep = list.to_list()
 
         if (len(pep) != 0):
-            print("\t"+ "known HLA found")
+            logger.info("\tknown HLA found")
             ofile = open("known_HLA.fasta", "w")
 
             for i in range(len(pep)):
                 ofile.write('>' + '\n' + pep[i] + '\n')
             ofile.close()
         else:
-            print("\t"+ "no known HLA found")
+            logger.info("\tno known HLA found")
 
         known = output_HLA[output_HLA["blastp_category"] != 'match to known protein']
         list = known["Query"] 
         pep = list.to_list()
     else:
-        print("No peptides to search for known HLAs")
+        logger.info("No peptides to search for known HLAs")
 
     
     if (len(pep) != 0): #to prevent blast with empty query
@@ -371,14 +373,14 @@ if __name__ == "__main__":
         create_files(pep, 'to_blastp')
 
         if (len(pep) == 1):
-            print(str(len(pep)) + " peptide being searched for human canonical proteins")
+            logger.info(f"{len(pep)} peptide being searched for human canonical proteins")
         else:
-            print(str(len(pep)) + " peptides being searched for human canonical proteins")
+            logger.info(f"{len(pep)} peptides being searched for human canonical proteins")
         
         #blast all proteins against human canonical proteins
         subprocess.run("blastp -task blastp-short -query to_blastp.fasta -db db/human_canonical -out blastp_out_human_canonical -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
         
-        print("\t"+ "reading output")
+        logger.info("\treading output")
         parse_categorize('db/human_canonical.fasta', 'blastp_out_human_canonical', 'to_blastp_2.fasta')
         output  = pd.read_table('categorized_blastp_out_human_canonical')
         
@@ -396,9 +398,9 @@ if __name__ == "__main__":
         pep = list.to_list()
         SAAV = pep
     else:
-        print("blastp input empty")
+        logger.warning("blastp input empty")
 
-    print("\t"+ "generating lists and files for further analysis")
+    logger.info("\tgenerating lists and files for further analysis")
     
     
     if (len(pep) != 0): #to prevent blast with empty query
@@ -406,15 +408,14 @@ if __name__ == "__main__":
         create_files(pep,'SAAV')
         
         if (len(pep) == 1):  #more grammar Nazi
-            print(str(len(pep)) + " peptide being searched for Single Amino Acid Variants")
+            logger.info(f"{len(pep)} peptide being searched for Single Amino Acid Variants")
         else:
-            print(str(len(pep)) + " peptides being searched for Single Amino Acid Variants")
+            logger.info(f"{len(pep)} peptides being searched for Single Amino Acid Variants")
             
         #blastp against db_SAP (single amino acids polymorphisms)
-        #conda run -n Bio-stats blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid saccver pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"
         subprocess.run("blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
 
-        print("\t"+ "reading output")
+        logger.info("\treading output")
         parse_categorize('db/sap_db.fa', 'blast_out_SAAV', 'SAAV_2.fasta')
 
 
@@ -430,7 +431,7 @@ if __name__ == "__main__":
         ofile.close()
 
     else:
-        print("no potential SAAVs, proceeding to 6FT search")
+        logger.info("no potential SAAVs, proceeding to 6FT search")
 
     #searches peptides in 6FT db
     
@@ -440,7 +441,7 @@ if __name__ == "__main__":
 
         if(len(pep) == 1):
             
-            print(str(len(pep)) + " peptide being searched in the six frame translated human genome")
+            logger.info(f"{len(pep)} peptide being searched in the six frame translated human genome")
             
             
             subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
@@ -454,7 +455,7 @@ if __name__ == "__main__":
                     seqdb[record.description]=seq
             
             if (len(seqdb) == 0):
-                print("no match to 6FT")
+                logger.info("no match to 6FT")
                 unmatched = pep
                 matched = []
             else:
@@ -462,13 +463,13 @@ if __name__ == "__main__":
                 unmatched = []
 
         else:
-            print(str(len(pep)) + " peptides being searched in the six frame translated human genome")
+            logger.info(f"{len(pep)} peptides being searched in the six frame translated human genome")
 
             
             subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
 
 
-            print("\t"+ "writing 6FT results to dictionary")
+            logger.info("\twriting 6FT results to dictionary")
 
             input1= SeqIO.parse('6ft_out',"fasta") # 6FT results to dict
             seqdb={}
@@ -477,21 +478,21 @@ if __name__ == "__main__":
                 if record.description not in seqdb:
                     seqdb[record.description]=seq
                     
-            print("\t"+ "number of matches from 6FT:", len(seqdb))
+            logger.info(f"\tnumber of matches from 6FT: {len(seqdb)}")
 
             input  = open('to_6ft_2.fasta', 'r') #list of peptides, has to be in a list
             pep = []
             for line in input:
                     pep = pep + line.strip().split("\t")
 
-            print("\t"+ "locating and matching peptides to 6FT")
+            logger.info("\tlocating and matching peptides to 6FT")
 
             matched, unmatched = find_matches(pep, seqdb, '6FT')
 
             if len(matched) == 0:
-                print("\t"+ "no peptides matched to 6ft")
+                logger.info("\tno peptides matched to 6ft")
             else:
-                print("\t"+ "writing " + str(len(matched)) + " peptide matches to 6FT")
+                logger.info(f"\twriting {len(matched)} peptide matches to 6FT")
                 with open('matches_to_6ft.csv','w') as f:
                     w = csv.writer(f)
                     w.writerow(["Peptide", "Sequence_loc"]) #header names
@@ -499,16 +500,16 @@ if __name__ == "__main__":
                         sequence = matched[key]
                         w.writerow([key, sequence])
 
-            print("\t"+ "writing " + str(len(unmatched)) + " unmatched peptides")
+            logger.info(f"\twriting {len(unmatched)} unmatched peptides")
             create_files(unmatched, 'no_match_6ft')
 
     else:
-        print("no peptides to search in 6FT")
+        logger.info("no peptides to search in 6FT")
     
 
     #searching for proteosome catalyzed peptide spliced 
     
-    print(str(len(unmatched)) + " peptides being searched for proteosome catalyzed peptide spliced variants")
+    logger.info(f"{len(unmatched)} peptides being searched for proteosome catalyzed peptide spliced variants")
 
     PCPS("no_match_6ft_2.fasta")
     
@@ -560,7 +561,7 @@ if __name__ == "__main__":
     
     #writing data to excel file
     if (len(mismatched) == 0 & len(matched) == 0 & len(unmatched) == 0):
-        print("No significant peptides found")
+        logger.info("No significant peptides found")
         
     else:
         
@@ -568,12 +569,12 @@ if __name__ == "__main__":
         try:
             os.makedirs(output_file_path)
             os.chdir(output_file_path)
-            print("Search directory created at " + os.getcwd())
+            logger.info(f"Search directory created at {os.getcwd()}")
         except OSError as error:
             os.chdir(output_file_path)
-            print("Directory already exists at " + os.getcwd())
+            logger.info(f"Directory already exists at {os.getcwd()}")
             
-        print("Creating excel file with results")
+        logger.info("Creating excel file with results")
         with pd.ExcelWriter(file_name + '_immuno_search_out.xlsx', engine='openpyxl') as writer:
             # Write each DataFrame to a different sheet
             if (len(mismatched) != 0):
@@ -586,5 +587,5 @@ if __name__ == "__main__":
                 cis_PCPS.to_excel(writer, sheet_name= "cis_PCPS", index= False)
 
         os.chdir(work_dir)
-        print("returning back to work directory at", work_dir)
-        print("search and classification done, file saved at ", output_file_path + file_name + '_immuno_search_out.xlsx')
+        logger.info(f"returning back to work directory at {work_dir}")
+        logger.info(f"search and classification done, file saved at {output_file_path}{file_name}_immuno_search_out.xlsx")
