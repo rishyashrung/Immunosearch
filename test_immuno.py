@@ -274,21 +274,6 @@ if __name__ == "__main__":
         elif opt in ("-c", "--cleanup"):
             cleanup = True
 
-    # Check if any required arguments are missing
-    if None in (work_dir, input_file_path, MHC_class, gibbs_cluster, output_file_path, file_name):
-        logger.error("Missing required arguments")
-        sys.exit(2)
-
-    if cleanup:
-        logger.info(f"Cleaning up all previous files in working directory {work_dir}")
-        for item in os.listdir(work_dir):
-            item_path = os.path.join(work_dir, item)
-            if os.path.isfile(item_path):
-                try:
-                    os.remove(item_path)
-                    logger.info(f"Deleted file {item_path} from previous runs")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {item_path} from previous run {e}")
 
     try:
         os.makedirs(output_file_path, exist_ok=True)
@@ -296,7 +281,7 @@ if __name__ == "__main__":
     except OSError as e:
         print(f"Failed to create output directory {e}")
         sys.exit(1)  # Optional: halt if this is critical
-
+            
     # Configure root logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -313,6 +298,24 @@ if __name__ == "__main__":
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(fh)
+
+
+    # Check if any required arguments are missing
+    if None in (work_dir, input_file_path, MHC_class, gibbs_cluster, output_file_path, file_name):
+        logger.error("Missing required arguments")
+        sys.exit(2)
+
+    if cleanup:
+        logger.info(f"Cleaning up files from previous runs in working directory {work_dir}")
+        for item in os.listdir(work_dir):
+            item_path = os.path.join(work_dir, item)
+            if os.path.isfile(item_path):
+                try:
+                    os.remove(item_path)
+                    logger.info(f"\tremoved file {item}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove {item}{e}")
+
 
     # Change to working directory
     
