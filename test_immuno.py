@@ -246,7 +246,7 @@ def PCPS(input_file):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "w:i:m:g:o:f:", 
+        opts, args = getopt.getopt(sys.argv[1:], "w:i:m:g:o:f:c", 
                                    ["work_dir=", "input_file_path=", "MHC_class=", 
                                     "gibbs_cluster=", "output_file_path=", "file_name="])
     except getopt.GetoptError as err:
@@ -254,6 +254,9 @@ if __name__ == "__main__":
         sys.exit(2)
 
     work_dir = input_file_path = MHC_class = gibbs_cluster = output_file_path = file_name = None
+    
+    ##Initializing cleanup as False by default
+    cleanup = False
 
     for opt, arg in opts:
         if opt in ("-w", "--work_dir"):
@@ -268,12 +271,24 @@ if __name__ == "__main__":
             output_file_path = os.path.expanduser(arg)
         elif opt in ("-f", "--file_name"):
             file_name = arg
+        elif opt in ("-c", "--cleanup"):
+            cleanup = True
 
     # Check if any required arguments are missing
     if None in (work_dir, input_file_path, MHC_class, gibbs_cluster, output_file_path, file_name):
         logger.error("Missing required arguments")
         sys.exit(2)
 
+    if cleanup:
+        logger.info(f"Cleaning up all previous files in working directory {work_dir}")
+        for item in os.listdir(work_dir):
+            item_path = os.path.join(work_dir, item)
+            if os.path.isfile(item_path):
+                try:
+                    os.remove(item_path)
+                    logger.info(f"Deleted file {item_path} from previous runs")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {item_path} from previous run {e}")
 
     try:
         os.makedirs(output_file_path, exist_ok=True)
