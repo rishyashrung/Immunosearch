@@ -257,15 +257,15 @@ if __name__ == "__main__":
 
     for opt, arg in opts:
         if opt in ("-w", "--work_dir"):
-            work_dir = arg
+            work_dir = os.path.expanduser(arg)
         elif opt in ("-i", "--input_file_path"):
-            input_file_path = arg
+            input_file_path = os.path.expanduser(arg)
         elif opt in ("-m", "--MHC_class"):
             MHC_class = str(arg)
         elif opt in ("-g", "--gibbs_cluster"):
             gibbs_cluster = [int(x) for x in arg.split(',')]  # Convert comma-separated string to a list of integers
         elif opt in ("-o", "--output_file_path"):
-            output_file_path = arg
+            output_file_path = os.path.expanduser(arg)
         elif opt in ("-f", "--file_name"):
             file_name = arg
 
@@ -274,27 +274,35 @@ if __name__ == "__main__":
         logger.error("Missing required arguments")
         sys.exit(2)
 
-    # Run the main function with the provided arguments
-    
-    # configure root logger
+
+    try:
+        os.makedirs(output_file_path, exist_ok=True)
+        print(f"Output directory created at {output_file_path}")
+    except OSError as e:
+        print(f"Failed to create output directory {e}")
+        sys.exit(1)  # Optional: halt if this is critical
+
+    # Configure root logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    # console handler
+    # Console handler (stdout)
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(ch)
 
-    # file handler
-    log_path = os.path.join(output_file_path, "pipeline.log")  # after you set work_dir
+    # File handler — now safe since directory exists
+    log_path = os.path.join(output_file_path, "pipeline.log")
     fh = logging.FileHandler(log_path, mode="w")
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(fh)
 
+    # Change to working directory
+    
     os.chdir(work_dir)
-    logger.info(f"loading into work directory at {work_dir}")
+    logger.info(f"Loading into working directory at {work_dir}")
     
     # peptide length 8-11, removing gibbs junk and DB matched
     all_data = pd.ExcelFile(input_file_path)
@@ -564,16 +572,6 @@ if __name__ == "__main__":
         logger.info("No significant peptides found")
         
     else:
-        
-        #creates output directory
-        try:
-            os.makedirs(output_file_path)
-            os.chdir(output_file_path)
-            logger.info(f"Search directory created at {os.getcwd()}")
-        except OSError as error:
-            os.chdir(output_file_path)
-            logger.info(f"Directory already exists at {os.getcwd()}")
-            
         logger.info("Creating excel file with results")
         with pd.ExcelWriter(file_name + '_immuno_search_out.xlsx', engine='openpyxl') as writer:
             # Write each DataFrame to a different sheet
