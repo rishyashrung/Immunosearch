@@ -572,7 +572,8 @@ if __name__ == "__main__":
         logger.info("No significant peptides found")
         
     else:
-        logger.info("Creating excel file with results")
+        os.chdir(output_file_path)
+        logger.info("creating excel file with results")
         with pd.ExcelWriter(file_name + '_immuno_search_out.xlsx', engine='openpyxl') as writer:
             # Write each DataFrame to a different sheet
             if (len(mismatched) != 0):
