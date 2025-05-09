@@ -4,12 +4,12 @@ import csv
 from Bio import SeqIO
 import os
 import subprocess
-import getopt
 import sys
 import re
 import ast
 import papermill
 import logging
+import argparse
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with f
     novel_file = pd.read_table('categorized_' + blast_out, sep ='\t', names = header_names)
     header_names = ["qseqid", "sseqid", "pident", "qlen", "mismatch", "qstart", "qend", "sstart", "send", "evalue", "bitscore", "gaps", "qseq", "sseq"]
     blast_file = pd.read_table(blast_out, sep ='\t', names = header_names)
-    blast_file
+    
     #to check if any keys are missing in the dictionary seqdb[]
     # Change return statements to use logging
     missing = blast_file[~blast_file["sseqid"].isin(seqdb.keys())]
@@ -201,9 +201,9 @@ def split_string(s):
             splits_dict[part1] = part2
     return splits_dict
 
-def PCPS(input_file):
+def PCPS(input_file, db_canonical_fasta):
         
-    input1= SeqIO.parse('db/human_canonical.fasta',"fasta") 
+    input1= SeqIO.parse(db_canonical_fasta,"fasta") 
     seqdb={}
     for record in input1:
             seq=str(record.seq)
@@ -244,69 +244,76 @@ def PCPS(input_file):
 ###
 #### main funciton starts here
 
-if __name__ == "__main__":
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "w:i:m:g:o:f:c", 
-                                   ["work_dir=", "input_file_path=", "MHC_class=", 
-                                    "gibbs_cluster=", "output_file_path=", "file_name="])
-    except getopt.GetoptError as err:
-        logger.error(err)
-        sys.exit(2)
 
-    work_dir = input_file_path = MHC_class = gibbs_cluster = output_file_path = file_name = None
-    
-    ##Initializing cleanup as False by default
-    cleanup = False
+def setup_logging(output_file_path):
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
-    for opt, arg in opts:
-        if opt in ("-w", "--work_dir"):
-            work_dir = os.path.expanduser(arg)
-        elif opt in ("-i", "--input_file_path"):
-            input_file_path = os.path.expanduser(arg)
-        elif opt in ("-m", "--MHC_class"):
-            MHC_class = str(arg)
-        elif opt in ("-g", "--gibbs_cluster"):
-            gibbs_cluster = [int(x) for x in arg.split(',')]  # Convert comma-separated string to a list of integers
-        elif opt in ("-o", "--output_file_path"):
-            output_file_path = os.path.expanduser(arg)
-        elif opt in ("-f", "--file_name"):
-            file_name = arg
-        elif opt in ("-c", "--cleanup"):
-            cleanup = True
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(ch)
 
+    log_path = os.path.join(output_file_path, "pipeline.log")
+    fh = logging.FileHandler(log_path, mode="w")
+    fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(fh)
+
+    return logger
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Immunosearch for filtering and classifying MHC peptides")
+
+    parser.add_argument("-w", "--work_dir", required=True, help="working direcrtory where runtime files are created")
+    parser.add_argument("-i", "--input_file_path", required=True, help="Input xlsx file with PEAKS search result in sheet 1 and gibbs_clustering output in sheet 2")
+    parser.add_argument("-m", "--MHC_class", required=True, help="MHC class")
+    parser.add_argument("-g", "--gibbs_cluster", required=True, type=lambda s: [int(x) for x in s.split(',')],
+                        help="comma-separated list of Gibbs cluster values to select")
+    parser.add_argument("-o", "--output_file_path", required=True, help="Output directory")
+    parser.add_argument("-f", "--file_name", required=True, help="xlsx file name")
+    parser.add_argument("-d", "--db_path", required=True, help="path to databse folder with all databse files")
+    parser.add_argument("-c", "--cleanup", action="store_true", help="flag to cleanup all files in the working directory, use to cleanup files from previous runs. !!DELETES all files in working directory, does not delete folders!!")
+
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
+
+    # Expand paths
+    work_dir = os.path.expanduser(args.work_dir)
+    input_file_path = os.path.expanduser(args.input_file_path)
+    output_file_path = os.path.expanduser(args.output_file_path)
+    db_path = os.path.expanduser(args.db_path)
+    MHC_class = args.MHC_class
+    gibbs_cluster = args.gibbs_cluster
+    cleanup = args.cleanup
+    file_name = args.file_name
 
     try:
         os.makedirs(output_file_path, exist_ok=True)
         print(f"Output directory created at {output_file_path}")
     except OSError as e:
         print(f"Failed to create output directory {e}")
-        sys.exit(1)  # Optional: halt if this is critical
-            
-    # Configure root logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+        sys.exit(1)
 
-    # Console handler (stdout)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-    logger.addHandler(ch)
-
-    # File handler — now safe since directory exists
-    log_path = os.path.join(output_file_path, "pipeline.log")
-    fh = logging.FileHandler(log_path, mode="w")
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-    logger.addHandler(fh)
-
-
-    # Check if any required arguments are missing
-    if None in (work_dir, input_file_path, MHC_class, gibbs_cluster, output_file_path, file_name):
-        logger.error("Missing required arguments")
-        sys.exit(2)
+    logger = setup_logging(output_file_path)
+    
+    try:
+        os.makedirs(work_dir, exist_ok=True)
+        print(f"working directory created at {work_dir}")
+    except OSError as e:
+        print(f"Failed to create working directory {e}")
+        sys.exit(1)
+    
+    # Log and validate
+    logger.info("Commencing Immunosearch...")
+    logger.info(f"Working directory: {work_dir}")
+    logger.info(f"Input file: {input_file_path}")
+    logger.info(f"MHC Class: {MHC_class}")
+    logger.info(f"Gibbs clusters selected: {gibbs_cluster}")
+    logger.info(f"Cleanup enabled: {cleanup}")
 
     if cleanup:
-        logger.info(f"Cleaning up files from previous runs in working directory {work_dir}")
+        logger.info(f"Cleaning up files from previous runs in {work_dir}")
         for item in os.listdir(work_dir):
             item_path = os.path.join(work_dir, item)
             if os.path.isfile(item_path):
@@ -314,11 +321,9 @@ if __name__ == "__main__":
                     os.remove(item_path)
                     logger.info(f"\tremoved file {item}")
                 except Exception as e:
-                    logger.warning(f"Failed to remove {item}{e}")
-
+                    logger.warning(f"\tfailed to remove {item} {e}")
 
     # Change to working directory
-    
     os.chdir(work_dir)
     logger.info(f"Loading into working directory at {work_dir}")
     
@@ -351,7 +356,6 @@ if __name__ == "__main__":
     data = data[data["Peptide"].isin(gibbs["Sequence"])]
     list = pd.unique(data["Peptide"])
     pep = list.tolist()
-    blast_p = pep
     logger.info("generating lists and files for further analysis")
     create_files(pep,'peptides')
 
@@ -364,14 +368,33 @@ if __name__ == "__main__":
         else:
             logger.info(f"{len(pep)} peptides being searched for known HLAs")
         
-        subprocess.run("blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
+        HLA_blastp_query_file = os.path.join(work_dir, "peptides.fasta")
+        db_HLA_blast_db = os.path.join(db_path, "APD_Hs_all")
+        HLA_blastp_output_file = os.path.join(work_dir, "HLA_blast_out")
+                
+        subprocess.run(
+            ["blastp",
+            "-task", "blastp-short",
+            "-query", HLA_blastp_query_file,
+            "-db", db_HLA_blast_db,
+            "-out", HLA_blastp_output_file,
+            "-evalue", "10.0",
+            "-outfmt", "6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"],
+            check=True)
+        
+        #subprocess.run("blastp -task blastp-short -query peptides.fasta -db db/APD_Hs_all -out HLA_blast_out -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
 
         #parsing and catergorizing HLA_blast output
         logger.info("\treading output")
-        parse_categorize('db/APD_Hs_all.fasta', 'HLA_blast_out', 'peptides_2.fasta')
+
+        db_HLA_fasta = os.path.join(db_path, "APD_Hs_all.fasta")
+        
+        #parse_categorize('db/APD_Hs_all.fasta', 'HLA_blast_out', 'peptides_2.fasta')
+        parse_categorize(db_HLA_fasta, 'HLA_blast_out', 'peptides_2.fasta')
 
         #known HLA
         logger.info("\tgenerating lists and files for further analysis")
+        
         output_HLA = pd.read_table('categorized_HLA_blast_out')
         known = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
         list = known["Query"] 
@@ -403,11 +426,25 @@ if __name__ == "__main__":
         else:
             logger.info(f"{len(pep)} peptides being searched for human canonical proteins")
         
+        canonical_blastp_query_file = os.path.join(work_dir, "to_blastp.fasta")
+        db_canonical_blast_db = os.path.join(db_path, "human_canonical")
+        canonical_blastp_output_file = os.path.join(work_dir, "blastp_out_human_canonical")
         #blast all proteins against human canonical proteins
-        subprocess.run("blastp -task blastp-short -query to_blastp.fasta -db db/human_canonical -out blastp_out_human_canonical -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
+        subprocess.run(
+            ["blastp",
+            "-task", "blastp-short",
+            "-query", canonical_blastp_query_file,
+            "-db", db_canonical_blast_db,
+            "-out", canonical_blastp_output_file,
+            "-evalue", "10.0",
+            "-outfmt", "6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"],
+            check=True)
+        #subprocess.run("blastp -task blastp-short -query to_blastp.fasta -db db/human_canonical -out blastp_out_human_canonical -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
         
         logger.info("\treading output")
-        parse_categorize('db/human_canonical.fasta', 'blastp_out_human_canonical', 'to_blastp_2.fasta')
+        db_canonical_fasta = os.path.join(db_path, "human_canonical.fasta")
+        #parse_categorize('db/human_canonical.fasta', 'blastp_out_human_canonical', 'to_blastp_2.fasta')
+        parse_categorize(db_canonical_fasta, 'blastp_out_human_canonical', 'to_blastp_2.fasta')
         output  = pd.read_table('categorized_blastp_out_human_canonical')
         
         #preparing fasta files of proteins to search 6FT database
@@ -438,11 +475,25 @@ if __name__ == "__main__":
         else:
             logger.info(f"{len(pep)} peptides being searched for Single Amino Acid Variants")
             
+        SAAV_blastp_query_file = os.path.join(work_dir, "SAAV.fasta")
+        db_SAAV_blast_db = os.path.join(db_path, "sap_db")
+        SAAV_blastp_output_file = os.path.join(work_dir, "blast_out_SAAV")
         #blastp against db_SAP (single amino acids polymorphisms)
-        subprocess.run("blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
+        subprocess.run(
+            ["blastp",
+            "-task", "blastp-short",
+            "-query", SAAV_blastp_query_file,
+            "-db", db_SAAV_blast_db,
+            "-out", SAAV_blastp_output_file,
+            "-evalue", "10.0",
+            "-outfmt", "6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"],
+            check=True)        
+        #subprocess.run("blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
 
         logger.info("\treading output")
-        parse_categorize('db/sap_db.fa', 'blast_out_SAAV', 'SAAV_2.fasta')
+        db_SAAV_fasta = os.path.join(db_path, "sap_db.fa")
+        parse_categorize(db_SAAV_fasta , 'blast_out_SAAV', 'SAAV_2.fasta')
+        #parse_categorize('db/sap_db.fa', 'blast_out_SAAV', 'SAAV_2.fasta')
 
 
         output = pd.read_table("categorized_blast_out_SAAV")
@@ -469,8 +520,16 @@ if __name__ == "__main__":
             
             logger.info(f"{len(pep)} peptide being searched in the six frame translated human genome")
             
-            
-            subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
+
+            seqkit_query_file = os.path.join(work_dir, "to_6ft_2.fasta")
+            db_human_6FT_fasta = os.path.join(db_path, "human_6FT_m.fasta")
+            seqkit_output_file = os.path.join(work_dir, "6ft_out")
+
+            cmd_seqkit = (f"seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein "
+                f"--pattern-file \"{seqkit_query_file}\" \"{db_human_6FT_fasta}\" > \"{seqkit_output_file}\"")
+            logger.info(cmd_seqkit)
+            subprocess.run(cmd_seqkit, shell=True, check=True)
+            #subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
 
 
             input1= SeqIO.parse('6ft_out',"fasta") # 6FT results to dict
@@ -491,8 +550,16 @@ if __name__ == "__main__":
         else:
             logger.info(f"{len(pep)} peptides being searched in the six frame translated human genome")
 
-            
-            subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
+            seqkit_query_file = os.path.join(work_dir, "to_6ft_2.fasta")
+            db_human_6FT_fasta = os.path.join(db_path, "human_6FT_m.fasta")
+            seqkit_output_file = os.path.join(work_dir, "6ft_out")
+
+            cmd_seqkit = (f"seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein "
+                f"--pattern-file \"{seqkit_query_file}\" \"{db_human_6FT_fasta}\" > \"{seqkit_output_file}\"")
+            logger.info(cmd_seqkit)
+            subprocess.run(cmd_seqkit, shell=True, check=True)
+
+            #subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
 
 
             logger.info("\twriting 6FT results to dictionary")
@@ -537,7 +604,7 @@ if __name__ == "__main__":
     
     logger.info(f"{len(unmatched)} peptides being searched for proteosome catalyzed peptide spliced variants")
 
-    PCPS("no_match_6ft_2.fasta")
+    PCPS("no_match_6ft_2.fasta", db_canonical_fasta)
     
     
     #saving output files
@@ -606,3 +673,6 @@ if __name__ == "__main__":
         os.chdir(work_dir)
         logger.info(f"returning back to work directory at {work_dir}")
         logger.info(f"search and classification done, file saved at {output_file_path}{file_name}_immuno_search_out.xlsx")
+
+if __name__ == "__main__":
+    main()
