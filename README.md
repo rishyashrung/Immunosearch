@@ -40,11 +40,11 @@ Immunosearch requires several databases to be available. These should be placed 
 
 1. **APD_Hs_all** - Known human MHC-presented peptides database
    - Download from: https://peptideatlas.org/builds/human/hla/202311/APD_Hs_all.fasta
-2. **human_canonical** - Human canonical protein database
+2. **human_canonical** - Uniprot human reference proteome
 3. **sap_db** - Single amino acid polymorphism database
    - Download from: http://119.3.41.228/dbSAP/download.html
 4. **human_6FT_m.fasta** - Six-frame translated human genome
-   - Generate from human reference genome with:
+   - Generate from human reference genome GRCh38.p14 with:
    ```bash
    seqkit translate db/GRCh38.p14_genomic.fna --append-frame -x -f 6 -M -m 8 --transl-table 1 -s > db/human_6FT_m.fasta
    ```
