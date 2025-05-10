@@ -10,6 +10,8 @@ import ast
 import papermill
 import logging
 import argparse
+from openpyxl.styles import Border, Side
+from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
@@ -290,9 +292,9 @@ def main():
 
     try:
         os.makedirs(output_file_path, exist_ok=True)
-        print(f"Output directory created at {output_file_path}")
+        print(f"output directory created at {output_file_path}")
     except OSError as e:
-        print(f"Failed to create output directory {e}")
+        print(f"failed to create output directory {e}")
         sys.exit(1)
 
     logger = setup_logging(output_file_path)
@@ -301,7 +303,7 @@ def main():
         os.makedirs(work_dir, exist_ok=True)
         print(f"working directory created at {work_dir}")
     except OSError as e:
-        print(f"Failed to create working directory {e}")
+        print(f"failed to create working directory {e}")
         sys.exit(1)
     
     # Log and validate
@@ -669,6 +671,47 @@ def main():
                 Sixframe_notmatched.to_excel(writer, sheet_name='Six_frame_non_matched', index=False)
             if (len(cis_PCPS) != 0):
                 cis_PCPS.to_excel(writer, sheet_name= "cis_PCPS", index= False)
+            #removes borders in excel headers
+            for sheet_name in writer.sheets:
+                    worksheet = writer.sheets[sheet_name]
+                    
+                    # Get the dimensions of the sheet
+                    max_row = worksheet.max_row
+                    max_col = worksheet.max_column
+                    
+                    # Create a no-border style
+                    no_border = Border(left=Side(style=None), 
+                                    right=Side(style=None),
+                                    top=Side(style=None),
+                                    bottom=Side(style=None))
+                    
+                    # Apply no border to header row (row 1)
+                    for col in range(1, max_col + 1):
+                        cell = worksheet.cell(row=1, column=col)
+                        cell.border = no_border
+                    
+                    # Auto-size columns based on content
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = get_column_letter(column[0].column)
+                            
+                            # Find the longest content in each column
+                            for cell in column:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except:
+                                    pass
+                            
+                            # Add some padding
+                            adjusted_width = max_length + 2
+                            
+                            # Set a reasonable maximum width to prevent extremely wide columns
+                            if adjusted_width > 50:
+                                adjusted_width = 50
+                            
+                            # Set the column width
+                            worksheet.column_dimensions[column_letter].width = adjusted_width
 
         os.chdir(work_dir)
         logger.info(f"returning back to work directory at {work_dir}")
