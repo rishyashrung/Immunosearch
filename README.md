@@ -44,10 +44,11 @@ Immunosearch requires several databases to be available. These should be placed 
 3. **sap_db** - Single amino acid polymorphism database
    - Download from: http://119.3.41.228/dbSAP/download.html
 4. **human_6FT_m.fasta** - Six-frame translated human genome
-   - Generate from human reference genome GRCh38.p14 with:
-   ```bash
-   seqkit translate db/GRCh38.p14_genomic.fna --append-frame -x -f 6 -M -m 8 --transl-table 1 -s > db/human_6FT_m.fasta
-   ```
+   - Generate from human reference genome GRCh38.p14 using `seqkit`:
+
+```bash
+seqkit translate db/GRCh38.p14_genomic.fna --append-frame -x -f 6 -M -m 8 --transl-table 1 -s > db/human_6FT_m.fasta
+```
 
 Each database (except the FASTA file) should be formatted using `makeblastdb`:
 
