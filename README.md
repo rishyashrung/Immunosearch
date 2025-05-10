@@ -53,8 +53,8 @@ Each database (except the FASTA file) should be formatted using `makeblastdb`:
 
 ```bash
 makeblastdb -in APD_Hs_all.fasta -dbtype prot -out APD_Hs_all
-makeblastdb -in human_canonical.fasta -dbtype prot -out human_canonical
-makeblastdb -in sap_db.fa -dbtype prot -out sap_db
+makeblastdb -in human_canonical.fasta -dbtype prot -parse_seqids -out human_canonical
+makeblastdb -in sap_db.fa -dbtype prot -parse_seqids -out sap_db
 ```
 
 ## Usage
@@ -65,7 +65,7 @@ python test_immuno.py -w /path/to/workdir \
                      -m 1 \
                      -g 1,2,3 \
                      -o /path/to/output \
-                     -f output_filename \
+                     -f input_Excel_filename \
                      -d /path/to/database_folder
 ```
 
@@ -80,7 +80,7 @@ python test_immuno.py -w /path/to/workdir \
   - leave blank to skip filtering by length
 - `-g, --gibbs_cluster`: Comma-separated list of Gibbs cluster values to select
 - `-o, --output_file_path`: Output directory
-- `-f, --file_name`: Excel file name (without extension)
+- `-f, --file_name`: Input Excel file name (without extension)
 - `-d, --db_path`: Path to database folder with all database files
 - `-c, --cleanup`: Flag to cleanup all files in the working directory from previous runs (optional)
 
@@ -115,7 +115,10 @@ The pipeline generates detailed logs in the output directory (pipeline.log).
 
 ## Troubleshooting
 
-- Ensure all database files are properly formatted with makeblastdb
+- Ensure all database files are 
+	in a single folder
+	properly formatted with makeblastdb and seqkit
+	have correct names
 - Check that the input Excel file has the correct sheet structure
 - Verify file paths in command arguments (use absolute paths if possible)
 - Check pipeline.log for detailed information about each step
