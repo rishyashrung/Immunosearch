@@ -36,7 +36,7 @@ def create_files(pep, file_name):
     return True
 
 #fn for parsing and categorizing blast output
-def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with file extension
+def parse_categorize(database_fasta, blast_out, fasta2, SAAV=False): #requires inputs with file extension
 
     input1= SeqIO.parse(database_fasta,"fasta") # blastp reference database
     seqdb={}
@@ -78,26 +78,48 @@ def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with f
         else:
             Cterm_seq=sseq[send-3:send+3]
 
-        if alignlen==peplen:
-            if float(ident)==100:
-                category="match to known protein"
-            
-            elif int(gap)==0 and int(mismatch)==1:
-                category="map to known protein with 1 aa mismatch"
-                for i in range(peplen):
-                    if qid[i]!=alignseq[i]:
-                        single_sub_pos=str(i+1)
+        if SAAV:
+            if alignlen==peplen:
+                if float(ident)==100:
+                    category="match to known SAAV"
+                
+                elif int(gap)==0 and int(mismatch)==1:
+                    category="potential novel SAAV (maps to known SAAV with 1 aa mismatch)"
+                    for i in range(peplen):
+                        if qid[i]!=alignseq[i]:
+                            single_sub_pos=str(i+1)
 
-            elif int(gap)==1 and int(mismatch)==0:
-                category="map to known protein with 1 aa insertion"
+                elif int(gap)==1 and int(mismatch)==0:
+                    category="potential novel SAAV (maps to known SAAV with 1 aa insertion)"
+                else:
+                    category="potential novel SAAV (maps to known SAAV with more than 2 mismatched aa)"
+            elif peplen-alignlen==1 and float(ident)==100:
+                category="potential novel SAAV (maps to known SAAV with 1 aa deletion)"
+
             else:
-                category="novelpep (map to known protein with more than 2 mismatched aa)"
-        elif peplen-alignlen==1 and float(ident)==100:
-            category="map to known protein with 1 aa deletion"
-
-        else:
-            category="novelpep (map to known protein with more than 2 mismatched aa)"
+                category="potential novel SAAV (maps to known SAAV with more than 2 mismatched aa)"
         
+        else:
+            if alignlen==peplen:
+                if float(ident)==100:
+                    category="match to known protein"
+                
+                elif int(gap)==0 and int(mismatch)==1:
+                    category="map to known protein with 1 aa mismatch"
+                    for i in range(peplen):
+                        if qid[i]!=alignseq[i]:
+                            single_sub_pos=str(i+1)
+
+                elif int(gap)==1 and int(mismatch)==0:
+                    category="map to known protein with 1 aa insertion"
+                else:
+                    category="potential novelpep (map to known protein with more than 2 mismatched aa)"
+            elif peplen-alignlen==1 and float(ident)==100:
+                category="map to known protein with 1 aa deletion"
+
+            else:
+                category="potential novelpep (map to known protein with more than 2 mismatched aa)"
+
         if qid not in hits_dic:
             hits_dic[qid]=evalue
             blastout[qid]=[category,sid,ident,peplen,single_sub_pos,Nterm_seq,alignseq,Cterm_seq,alignlen,mismatch,gap]
@@ -118,9 +140,14 @@ def parse_categorize(database_fasta, blast_out, fasta2): #requires inputs with f
             results=blastout[row[0]]
             newrow=row+results
             output.write("\t".join(map(str,newrow))+"\n")
+        
         else:
-            newrow=row+["novelpep (no match to known protein found)","NA","NA","NA","NA","NA","NA","NA","NA","NA","NA"]
-            output.write("\t".join(map(str,newrow))+"\n")
+            if SAAV:
+                newrow=row+["potential novel SAAV (no match to known SAAV in dbSAP)","NA","NA","NA","NA","NA","NA","NA","NA","NA","NA"]
+                output.write("\t".join(map(str,newrow))+"\n")
+            else:
+                newrow=row+["potential novelpep (no match to known protein found)","NA","NA","NA","NA","NA","NA","NA","NA","NA","NA"]
+                output.write("\t".join(map(str,newrow))+"\n")
 
 
     input2.close()
@@ -399,7 +426,7 @@ def main():
         
         output_HLA = pd.read_table('categorized_HLA_blast_out')
         known = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
-        list = known["Query"] 
+        list = known["Query"]
         pep = list.to_list()
 
         if (len(pep) != 0):
@@ -461,7 +488,7 @@ def main():
         mismatched = output[output["blastp_category"] == 'map to known protein with 1 aa mismatch']
         list = mismatched["Query"] 
         pep = list.to_list()
-        SAAV = pep
+
     else:
         logger.warning("blastp input empty")
 
@@ -490,16 +517,16 @@ def main():
             "-evalue", "10.0",
             "-outfmt", "6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq"],
             check=True)        
-        #subprocess.run("blastp -task blastp-short -query SAAV.fasta -db db/sap_db -out blast_out_SAAV -evalue 10.0 -outfmt \"6 qseqid sseqid pident qlen mismatch qstart qend sstart send evalue bitscore gaps qseq sseq\"", shell=True)
+        
 
         logger.info("\treading output")
         db_SAAV_fasta = os.path.join(db_path, "sap_db.fa")
-        parse_categorize(db_SAAV_fasta , 'blast_out_SAAV', 'SAAV_2.fasta')
-        #parse_categorize('db/sap_db.fa', 'blast_out_SAAV', 'SAAV_2.fasta')
+        parse_categorize(db_SAAV_fasta , 'blast_out_SAAV', 'SAAV_2.fasta', SAAV = True)
+        
 
 
         output = pd.read_table("categorized_blast_out_SAAV")
-        not_SNP = output[output["blastp_category"] != 'match to known protein']
+        not_SNP = output[output["blastp_category"] != 'match to known SAAV']
         pep = not_SNP["Query"]
         pep = pep.to_list()
 
@@ -531,7 +558,7 @@ def main():
                 f"--pattern-file \"{seqkit_query_file}\" \"{db_human_6FT_fasta}\" > \"{seqkit_output_file}\"")
             logger.info(cmd_seqkit)
             subprocess.run(cmd_seqkit, shell=True, check=True)
-            #subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
+            
 
 
             input1= SeqIO.parse('6ft_out',"fasta") # 6FT results to dict
@@ -560,8 +587,6 @@ def main():
                 f"--pattern-file \"{seqkit_query_file}\" \"{db_human_6FT_fasta}\" > \"{seqkit_output_file}\"")
             logger.info(cmd_seqkit)
             subprocess.run(cmd_seqkit, shell=True, check=True)
-
-            #subprocess.run("seqkit grep --by-seq --ignore-case --threads 12 --seq-type protein --pattern-file to_6ft_2.fasta db/human_6FT_m.fasta > 6ft_out", shell=True)
 
 
             logger.info("\twriting 6FT results to dictionary")
@@ -613,7 +638,8 @@ def main():
     SAAV_out = pd.read_table('categorized_blast_out_SAAV', sep = "\t")
     Sixframe_notmatched = pd.read_table('no_match_6ft_2.fasta', sep = "\t", names = ["Peptides"])
     cis_PCPS = pd.read_table("cis_PCPS", names= ["Peptide", "Spliced_peptide", "Protein_origin"])
-
+    output_HLA = pd.read_table('categorized_HLA_blast_out')
+    known_HLA = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
     #getting peptide loci
 
     # Load your data
@@ -663,6 +689,8 @@ def main():
         logger.info("creating excel file with results")
         with pd.ExcelWriter(file_name + '_immuno_search_out.xlsx', engine='openpyxl') as writer:
             # Write each DataFrame to a different sheet
+            if (len(known_HLA) != 0):
+                known_HLA.to_excel(writer, sheet_name= "known_HLA", index= False)
             if (len(mismatched) != 0):
                 SAAV_out.to_excel(writer, sheet_name='Single_AA_variants', index=False)
             if (len(matched) != 0):
@@ -671,6 +699,7 @@ def main():
                 Sixframe_notmatched.to_excel(writer, sheet_name='Six_frame_non_matched', index=False)
             if (len(cis_PCPS) != 0):
                 cis_PCPS.to_excel(writer, sheet_name= "cis_PCPS", index= False)
+
             #removes borders in excel headers
             for sheet_name in writer.sheets:
                     worksheet = writer.sheets[sheet_name]
