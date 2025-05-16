@@ -422,12 +422,16 @@ def main():
     
     #peptide length 8-11, removing gibbs junk and DB matched
     if pipeline_workflow == 'gibbs':
+
         all_data = pd.ExcelFile(input_file_path)
         data = pd.read_excel(all_data, file_name)
         gibbs = pd.read_excel(all_data, 'gibbs_clustering')
         logger.info("filtering peptides found by DB search")
         
         data = data[data["Found By"] != 'DB Search']
+        data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
+        data["Peptide"] = data["Peptide"].str.replace(r"\(\+.*?\)", "", regex=True)
+
         if (len(gibbs_cluster) != 0):
             logger.info(f"Selected gibbs clusters based on input, gibbs clusters {gibbs_cluster}")
             gibbs = gibbs[gibbs["Gn"].isin(gibbs_cluster)]
@@ -455,6 +459,7 @@ def main():
 
     # #for round 2 YK
     elif pipeline_workflow == 'no_gibbs':
+
         data = pd.read_excel(input_file_path)
         data = data[data["Found By"] != 'DB Search']
         data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
