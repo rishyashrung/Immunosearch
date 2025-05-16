@@ -36,7 +36,7 @@ def create_files(pep, file_name):
     return True
 
 #fn for parsing and categorizing blast output
-def parse_categorize(database_fasta, blast_out, fasta2, SAAV=False): #requires inputs with file extension
+def parse_categorize(database_fasta, blast_out, fasta2, SAAV=False, HLA=False): #requires inputs with file extension
 
     input1= SeqIO.parse(database_fasta,"fasta") # blastp reference database
     seqdb={}
@@ -98,6 +98,27 @@ def parse_categorize(database_fasta, blast_out, fasta2, SAAV=False): #requires i
 
             else:
                 category="potential novel SAAV (maps to known SAAV with more than 2 mismatched aa)"
+        
+        elif HLA:
+            if alignlen==peplen:
+                if float(ident)==100:
+                    category="match to known HLA peptide"
+                
+                elif int(gap)==0 and int(mismatch)==1:
+                    category="potential novelpep (matches to known HLA with 1 aa mismatch)"
+                    for i in range(peplen):
+                        if qid[i]!=alignseq[i]:
+                            single_sub_pos=str(i+1)
+
+                elif int(gap)==1 and int(mismatch)==0:
+                    category="potential novelpep (maps to known HLA with 1 aa insertion)"
+                else:
+                    category="potential novelpep (map to known HLA with more than 2 mismatched aa)"
+            elif peplen-alignlen==1 and float(ident)==100:
+                category="map to known protein with 1 aa deletion"
+
+            else:
+                category="potential novelpep (map to known HLA with more than 2 mismatched aa)"
         
         else:
             if alignlen==peplen:
@@ -267,6 +288,47 @@ def PCPS(input_file, db_canonical_fasta):
     logger.info("\tseparate files cis_PCPS and trans_PCPS created for spliced peptides")
     return True
 
+def make_bed(df):
+
+    # Step 1: Explode the semicolon-separated genomic loci
+    df_expanded = df.assign(loci_list=df['Genomic_loci'].str.split(';')).explode('loci_list')
+    
+    # Step 2: Extract chrom, start, end, strand using improved regex pattern
+    # This pattern handles both negative and positive frame values correctly
+    pattern = r"(chr[\w]+):(\d+)_(\d+)_frame=([-+]?)(\d*)"
+    extracted = df_expanded['loci_list'].str.extract(pattern)
+    
+    # Name the columns and handle the strand information properly
+    df_expanded['chrom'] = extracted[0]
+    df_expanded['start'] = extracted[1]
+    df_expanded['end'] = extracted[2]
+    
+    # Handle strand: if frame is negative, strand is '-', otherwise '+'
+    df_expanded['strand'] = '-'
+    positive_mask = ~extracted[3].eq('-')
+    df_expanded.loc[positive_mask, 'strand'] = '+'
+    
+    # Step 3: Drop rows with invalid loci
+    df_expanded = df_expanded.dropna(subset=['chrom', 'start', 'end'])
+    
+    # Step 4: Convert to correct types
+    df_expanded['start'] = df_expanded['start'].astype(int)
+    df_expanded['end'] = df_expanded['end'].astype(int)
+    
+    # Step 5: Create BED DataFrame with proper column order
+    bed_df = pd.DataFrame({
+        'chrom': df_expanded['chrom'],
+        'chromStart': df_expanded['start'],
+        'chromEnd': df_expanded['end'],
+        'name': df_expanded['Peptide'],
+        'score': 1000,  # Default score
+        'strand': df_expanded['strand']
+    })
+    
+    # Optional: Sort BED entries
+    bed_df = bed_df.sort_values(by=['chrom', 'chromStart'])
+    
+    return bed_df
 
 #
 ##
@@ -294,13 +356,14 @@ def parse_args():
 
     parser.add_argument("-w", "--work_dir", required=True, help="working direcrtory where runtime files are created")
     parser.add_argument("-i", "--input_file_path", required=True, help="Input xlsx file with PEAKS search result in sheet 1 and gibbs_clustering output in sheet 2")
-    parser.add_argument("-m", "--MHC_class", required=True, help="MHC class")
-    parser.add_argument("-g", "--gibbs_cluster", required=True, type=lambda s: [int(x) for x in s.split(',')],
+    parser.add_argument("-m", "--MHC_class", required=False, help="MHC class")
+    parser.add_argument("-g", "--gibbs_cluster", required=False, type=lambda s: [int(x) for x in s.split(',')],
                         help="comma-separated list of Gibbs cluster values to select")
     parser.add_argument("-o", "--output_file_path", required=True, help="Output directory")
     parser.add_argument("-f", "--file_name", required=True, help="xlsx file name")
     parser.add_argument("-d", "--db_path", required=True, help="path to databse folder with all databse files")
     parser.add_argument("-c", "--cleanup", action="store_true", help="flag to cleanup all files in the working directory, use to cleanup files from previous runs. !!DELETES all files in working directory, does not delete folders!!")
+    parser.add_argument("-p", "--pipeline_workflow", required=True, help = "'gibbs' - if gibbs clustering results are present in the same file, 'no_gibbs' - to use all peptide sequences from PEAKS search without gibbs considerations")
 
     return parser.parse_args()
 
@@ -316,7 +379,7 @@ def main():
     gibbs_cluster = args.gibbs_cluster
     cleanup = args.cleanup
     file_name = args.file_name
-
+    pipeline_workflow = args.pipeline_workflow
     try:
         os.makedirs(output_file_path, exist_ok=True)
         print(f"output directory created at {output_file_path}")
@@ -339,6 +402,7 @@ def main():
     logger.info(f"Input file: {input_file_path}")
     logger.info(f"MHC Class: {MHC_class}")
     logger.info(f"Gibbs clusters selected: {gibbs_cluster}")
+    logger.info(f"Pipeline workflow: {pipeline_workflow}")
     logger.info(f"Cleanup enabled: {cleanup}")
 
     if cleanup:
@@ -356,37 +420,48 @@ def main():
     os.chdir(work_dir)
     logger.info(f"Loading into working directory at {work_dir}")
     
-    # peptide length 8-11, removing gibbs junk and DB matched
-    all_data = pd.ExcelFile(input_file_path)
-    data = pd.read_excel(all_data, file_name)
-    gibbs = pd.read_excel(all_data, 'gibbs_clustering')
-    logger.info("filtering peptides found by DB search")
-    
-    data = data[data["Found By"] != 'DB Search']
-    if (len(gibbs_cluster) != 0):
-        logger.info(f"Selected gibbs clusters based on input, gibbs clusters {gibbs_cluster}")
-        gibbs = gibbs[gibbs["Gn"].isin(gibbs_cluster)]
-    else:
-        logger.info("selecting all gibbs clusters")
-        gibbs = gibbs
-    
-    if (MHC_class == '1'):
-        logger.info("selecting peptides with length between 8 and 11 AA")
-        gibbs = gibbs[gibbs["Sequence"].str.len().between(8,11)]
-    elif (MHC_class == '2'):
-        logger.info("selecting peptides with length between 12 and 17 AA")
-        gibbs = gibbs[gibbs["Sequence"].str.len().between(12,17)]
-    elif (MHC_class == "E"):
-        logger.info("selecting peptides with length between 8 and 15 AA")
-        gibbs = gibbs[gibbs["Sequence"].str.len().between(8,15)]
-    else:
-        logger.warning("!!! not filtered by length")
+    #peptide length 8-11, removing gibbs junk and DB matched
+    if pipeline_workflow == 'gibbs':
+        all_data = pd.ExcelFile(input_file_path)
+        data = pd.read_excel(all_data, file_name)
+        gibbs = pd.read_excel(all_data, 'gibbs_clustering')
+        logger.info("filtering peptides found by DB search")
+        
+        data = data[data["Found By"] != 'DB Search']
+        if (len(gibbs_cluster) != 0):
+            logger.info(f"Selected gibbs clusters based on input, gibbs clusters {gibbs_cluster}")
+            gibbs = gibbs[gibbs["Gn"].isin(gibbs_cluster)]
+        else:
+            logger.info("selecting all gibbs clusters")
+            gibbs = gibbs
+        
+        if (MHC_class == '1'):
+            logger.info("selecting peptides with length between 8 and 11 AA")
+            gibbs = gibbs[gibbs["Sequence"].str.len().between(8,11)]
+        elif (MHC_class == '2'):
+            logger.info("selecting peptides with length between 12 and 17 AA")
+            gibbs = gibbs[gibbs["Sequence"].str.len().between(12,17)]
+        elif (MHC_class == "E"):
+            logger.info("selecting peptides with length between 8 and 15 AA")
+            gibbs = gibbs[gibbs["Sequence"].str.len().between(8,15)]
+        else:
+            logger.warning("!!! not filtered by length")
 
-    data = data[data["Peptide"].isin(gibbs["Sequence"])]
-    list = pd.unique(data["Peptide"])
-    pep = list.tolist()
-    logger.info("generating lists and files for further analysis")
-    create_files(pep,'peptides')
+        data = data[data["Peptide"].isin(gibbs["Sequence"])]
+        list = pd.unique(data["Peptide"])
+        pep = list.tolist()
+        logger.info("generating lists and files for further analysis")
+        create_files(pep,'peptides')
+
+    # #for round 2 YK
+    elif pipeline_workflow == 'no_gibbs':
+        data = pd.read_excel(input_file_path)
+        data = data[data["Found By"] != 'DB Search']
+        data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
+        list = pd.unique(data["Peptide"].str.replace(r"\(\+.*?\)", "", regex=True))
+        pep = list.tolist()
+        logger.info("generating lists and files fsor further analysis")
+        create_files(pep,'peptides')
 
 
     #blast against known HLA peptides
@@ -398,7 +473,7 @@ def main():
             logger.info(f"{len(pep)} peptides being searched for known HLAs")
         
         HLA_blastp_query_file = os.path.join(work_dir, "peptides.fasta")
-        db_HLA_blast_db = os.path.join(db_path, "APD_Hs_all")
+        db_HLA_blast_db = os.path.join(db_path, "HLA_db_APD_IEDB_combined")
         HLA_blastp_output_file = os.path.join(work_dir, "HLA_blast_out")
                 
         subprocess.run(
@@ -416,21 +491,21 @@ def main():
         #parsing and catergorizing HLA_blast output
         logger.info("\treading output")
 
-        db_HLA_fasta = os.path.join(db_path, "APD_Hs_all.fasta")
+        db_HLA_fasta = os.path.join(db_path, "HLA_db_APD_IEDB_combined.fasta")
         
         #parse_categorize('db/APD_Hs_all.fasta', 'HLA_blast_out', 'peptides_2.fasta')
-        parse_categorize(db_HLA_fasta, 'HLA_blast_out', 'peptides_2.fasta')
+        parse_categorize(db_HLA_fasta, 'HLA_blast_out', 'peptides_2.fasta', HLA = True)
 
         #known HLA
         logger.info("\tgenerating lists and files for further analysis")
         
         output_HLA = pd.read_table('categorized_HLA_blast_out')
-        known = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
+        known = output_HLA[output_HLA["blastp_category"] == 'match to known HLA peptide']
         list = known["Query"]
         pep = list.to_list()
 
         if (len(pep) != 0):
-            logger.info("\tknown HLA found")
+            logger.info(f"\t{len(pep)} known HLA found")
             ofile = open("known_HLA.fasta", "w")
 
             for i in range(len(pep)):
@@ -639,7 +714,8 @@ def main():
     Sixframe_notmatched = pd.read_table('no_match_6ft_2.fasta', sep = "\t", names = ["Peptides"])
     cis_PCPS = pd.read_table("cis_PCPS", names= ["Peptide", "Spliced_peptide", "Protein_origin"])
     output_HLA = pd.read_table('categorized_HLA_blast_out')
-    known_HLA = output_HLA[output_HLA["blastp_category"] == 'match to known protein']
+    known_HLA = output_HLA[output_HLA["blastp_category"] == 'match to known HLA peptide']
+    
     #getting peptide loci
 
     # Load your data
@@ -647,6 +723,13 @@ def main():
 
     # Updated function: now includes frame info in the output
     def compute_locus_for_pair(entry_str, aa_pair):
+        if any(x in entry_str for x in ['NT_', 'NW_', 'ALT_REF_LOCI', 'PATCH']):
+            return  None
+    
+    # Skip entries that don't use the primary assembly
+        if 'Primary Assembly' not in entry_str:
+            return None
+
         m_chr   = re.search(r'chromosome (\w+)', entry_str)
         m_beg   = re.search(r'begin=(\d+)', entry_str)
         m_end   = re.search(r'end=(\d+)',   entry_str)
@@ -659,11 +742,11 @@ def main():
 
         s, e = aa_pair
         if frame > 0:
-            g_start = prot_b + 3*(s - 1)
-            g_end   = prot_b + 3*e   - 1
+            g_start = prot_b + 3*(s - 1) + 3 - 1
+            g_end   = prot_b + 3*e   - 1 + 3
         else:
-            g_start = prot_e - (3*e   - 1)
-            g_end   = prot_e -  3*(s - 1)
+            g_start = prot_e - (3*e   - 1) - 3 - 1
+            g_end   = prot_e -  3*(s - 1) - 3
 
         return f"chr{chrom}:{g_start}_{g_end}_frame={frame}"
 
@@ -674,11 +757,12 @@ def main():
             compute_locus_for_pair(entry_str, aa_pair)
             for entry_str, aa_pair in pairs
         ]
+        loci = [loc for loc in loci if loc is not None]
         return ";".join(loci)
 
     # Apply to your data (replace 'ColumnName' with the correct column name)
-    Sixframe_out['loci'] = Sixframe_out['Sequence_loc'].apply(all_loci_from_cell)
-    
+    Sixframe_out['Genomic_loci'] = Sixframe_out['Sequence_loc'].apply(all_loci_from_cell)
+    Sixframe_out = Sixframe_out[["Peptide", "Genomic_loci"]]
     
     #writing data to excel file
     if (len(mismatched) == 0 & len(matched) == 0 & len(unmatched) == 0):
@@ -695,6 +779,9 @@ def main():
                 SAAV_out.to_excel(writer, sheet_name='Single_AA_variants', index=False)
             if (len(matched) != 0):
                 Sixframe_out.to_excel(writer, sheet_name='Matches_to_six_frame', index=False)
+                BED = make_bed(Sixframe_out)
+                logger.info("writting BED file for matches to the six-frame translated genome")
+                BED.to_csv(file_name + ".bed", sep='\t', header=False, index=False)
             if (len(unmatched) != 0):
                 Sixframe_notmatched.to_excel(writer, sheet_name='Six_frame_non_matched', index=False)
             if (len(cis_PCPS) != 0):
