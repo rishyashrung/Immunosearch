@@ -38,8 +38,9 @@ conda activate immunosearch
 
 Immunosearch requires several databases to be available. These should be placed in a single directory:
 
-1. **APD_Hs_all** - Known human MHC-presented peptides database
+1. **HLA_db_APD_IEDB_combined** - Known human MHC-presented peptides database, download APD_Hs_all.fasta and mhc_ligand_full_tsv.zip, merge into a single fasta file
    - Download from: https://peptideatlas.org/builds/human/hla/202311/APD_Hs_all.fasta
+   - Download from: https://www.iedb.org/database_export_v3.php
 2. **human_canonical** - Uniprot human reference proteome
 3. **sap_db** - Single amino acid polymorphism database
    - Download from: http://119.3.41.228/dbSAP/download.html
@@ -67,7 +68,8 @@ python test_immuno.py -w /path/to/workdir \
                      -g 1,2,3 \
                      -o /path/to/output \
                      -f input_Excel_filename \
-                     -d /path/to/database_folder
+                     -d /path/to/database_folder \
+                     -p pipeline_workflow
 ```
 
 ### Parameters
@@ -83,13 +85,14 @@ python test_immuno.py -w /path/to/workdir \
 - `-o, --output_file_path`: Output directory
 - `-f, --file_name`: Input Excel file name (without extension)
 - `-d, --db_path`: Path to database folder with all database files
+- `-p, --pipeline_workflow`: 'gibbs' - if gibbs clustering results are present in the same file, 'no_gibbs' - to use all peptide sequences from PEAKS search without gibbs considerations
 - `-c, --cleanup`: Flag to cleanup all files in the working directory from previous runs (optional)
 
 ## Input Format
 
 The input Excel file should contain:
 - Sheet 1: PEAKS search results with at least a "Peptide" and "Found By" column
-- Sheet 2: Gibbs clustering results named "gibbs_clustering" with at least "Sequence" and "Gn" (Gibbs cluster number) columns
+- Sheet 2 (if using "gibbs" pipeline_workflow): Gibbs clustering results named "gibbs_clustering" with at least "Sequence" and "Gn" (Gibbs cluster number) columns
 
 ## Output
 
@@ -98,6 +101,8 @@ The program produces an Excel file with multiple sheets:
 - **Matches_to_six_frame**: Peptides matching regions in the six-frame translated human genome
 - **Six_frame_non_matched**: Peptides not matching in the six-frame translated genome
 - **cis_PCPS**: Potential proteasome-catalyzed spliced peptide variants (cis splicing)
+
+**BED file**: For matches to the six-frame translated genome, which can be used with Genome browser to visualise the context of the match in genome
 
 Additional working files are created in the working directory.
 
