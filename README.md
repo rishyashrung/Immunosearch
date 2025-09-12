@@ -62,7 +62,7 @@ makeblastdb -in sap_db.fa -dbtype prot -parse_seqids -out sap_db
 ## Usage
 
 ```bash
-python test_immuno.py -w /path/to/workdir \
+python immuno_serach.py -w /path/to/workdir \
                      -i /path/to/input.xlsx \
                      -m 1 \
                      -g 1,2,3 \
