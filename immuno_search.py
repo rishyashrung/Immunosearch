@@ -330,6 +330,9 @@ def make_bed(df):
     
     return bed_df
 
+def get_file_format(path):
+    ext = os.path.splitext(path)[1].lower()
+    return ext.lstrip(".")
 #
 ##
 ###
@@ -356,6 +359,7 @@ def parse_args():
 
     parser.add_argument("-w", "--work_dir", required=True, help="working direcrtory where runtime files are created")
     parser.add_argument("-i", "--input_file_path", required=True, help="Input xlsx file with PEAKS search result in sheet 1 and gibbs_clustering output in sheet 2")
+    parser.add_argument("-p", "--pipeline_workflow", required=True, help = "'gibbs' - if gibbs clustering results are present in the same file, 'no_gibbs' - to use all peptide sequences from PEAKS search without gibbs considerations")
     parser.add_argument("-m", "--MHC_class", required=False, help="MHC class")
     parser.add_argument("-g", "--gibbs_cluster", required=False, type=lambda s: [int(x) for x in s.split(',')],
                         help="comma-separated list of Gibbs cluster values to select")
@@ -363,7 +367,6 @@ def parse_args():
     parser.add_argument("-f", "--file_name", required=True, help="xlsx file name")
     parser.add_argument("-d", "--db_path", required=True, help="path to databse folder with all databse files")
     parser.add_argument("-c", "--cleanup", action="store_true", help="flag to cleanup all files in the working directory, use to cleanup files from previous runs. !!DELETES all files in working directory, does not delete folders!!")
-    parser.add_argument("-p", "--pipeline_workflow", required=True, help = "'gibbs' - if gibbs clustering results are present in the same file, 'no_gibbs' - to use all peptide sequences from PEAKS search without gibbs considerations")
 
     return parser.parse_args()
 
@@ -380,6 +383,7 @@ def main():
     cleanup = args.cleanup
     file_name = args.file_name
     pipeline_workflow = args.pipeline_workflow
+    
     try:
         os.makedirs(output_file_path, exist_ok=True)
         print(f"output directory created at {output_file_path}")
@@ -460,7 +464,14 @@ def main():
     # #for round 2 YK
     elif pipeline_workflow == 'no_gibbs':
 
-        data = pd.read_excel(input_file_path)
+        # dict for reading different file formats
+        READERS = {
+            "csv": lambda f: pd.read_table(f, sep=","),
+            "tsv": lambda f: pd.read_table(f, sep="\t"),
+            "xlsx": pd.read_excel
+            }
+        data = READER[get_file_format(input_file_path)](input_file_path)
+        logger.info(f"detected file type {get_file_format(input_file_path)}")
         data = data[data["Found By"] != 'DB Search']
         data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
         list = pd.unique(data["Peptide"].str.replace(r"\(\+.*?\)", "", regex=True))
