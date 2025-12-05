@@ -101,8 +101,8 @@ def parse_categorize(database_fasta, blast_out, fasta2, SAAV=False, HLA=False): 
         
         elif HLA:
             if alignlen==peplen:
-                if float(ident)==100:
-                    category="match to known HLA peptide"
+                if (float(ident) == 100 and sseq == qid):
+                    category = "match to known HLA peptide"
                 
                 elif int(gap)==0 and int(mismatch)==1:
                     category="potential novelpep (matches to known HLA with 1 aa mismatch)"

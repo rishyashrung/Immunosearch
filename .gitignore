@@ -6,6 +6,7 @@
 
 # Docs
 *.docx
+*.tsv
 *.txt
 
 # BED files
