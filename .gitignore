@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Jupyter notebooks
+*.ipynb
+
+# Docs
+*.docx
+*.txt
+
+# BED files
+*.bed
+
+# Scripts
+*.sh
+
+# Directories
+db/
+
