@@ -465,7 +465,7 @@ def main():
     elif pipeline_workflow == 'no_gibbs':
 
         # dict for reading different file formats
-        READERS = {
+        READER = {
             "csv": lambda f: pd.read_table(f, sep=","),
             "tsv": lambda f: pd.read_table(f, sep="\t"),
             "xlsx": pd.read_excel
