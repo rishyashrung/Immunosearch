@@ -434,7 +434,7 @@ def main():
         
         data = data[data["Found By"] != 'DB Search']
         data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
-        data["Peptide"] = data["Peptide"].str.replace(r"\(\+.*?\)", "", regex=True)
+        data["Peptide"] = data["Peptide"].str.replace(r"\(.*?\)", "", regex=True)
 
         if (len(gibbs_cluster) != 0):
             logger.info(f"Selected gibbs clusters based on input, gibbs clusters {gibbs_cluster}")
@@ -471,12 +471,27 @@ def main():
             "xlsx": pd.read_excel
             }
         data = READER[get_file_format(input_file_path)](input_file_path)
-        logger.info(f"detected file type {get_file_format(input_file_path)}")
+        logger.info(f"detected file type .{get_file_format(input_file_path)}")
         data = data[data["Found By"] != 'DB Search']
         data = data[~data["Accession"].str.contains("#CONTAM#", na=False)]
-        list = pd.unique(data["Peptide"].str.replace(r"\(\+.*?\)", "", regex=True))
+        data["Peptide"] = data["Peptide"].str.replace(r"\(.*?\)", "", regex=True)
+
+        if (MHC_class == '1'):
+            logger.info("selecting peptides with length between 8 and 11 AA")
+            data = data[gdata["Peptide"].str.len().between(8,11)]
+        elif (MHC_class == '2'):
+            logger.info("selecting peptides with length between 12 and 17 AA")
+            data = data[data["Peptide"].str.len().between(12,17)]
+        elif (MHC_class == "E"):
+            logger.info("selecting peptides with length between 8 and 15 AA")
+            data = data[data["Peptide"].str.len().between(8,15)]
+        else:
+            logger.warning("!!! not filtered by length")
+        
+        list = pd.unique(data["Peptide"])
         pep = list.tolist()
-        logger.info("generating lists and files fsor further analysis")
+         
+        logger.info("generating lists and files for further analysis")
         create_files(pep,'peptides')
 
 
